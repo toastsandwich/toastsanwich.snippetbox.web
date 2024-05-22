@@ -3,10 +3,12 @@ package web
 import (
 	"database/sql"
 	"flag"
+	"fmt"
 	"html/template"
 	"log"
 	"net/http"
 	"os"
+	"time"
 
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/toastsandwich/letsgo-api/internal/models"
@@ -38,6 +40,14 @@ func (app *Application) Routes() *http.ServeMux {
 	mux.HandleFunc("/snippet/create", app.SnippetCreate)
 	mux.HandleFunc("/snippet/view", app.SnippetView)
 	return mux
+}
+
+func humanDate(t time.Time) string {
+	return t.Format("02 Jan 2006 at 15:04")
+}
+
+var functions = template.FuncMap{
+	"humanDate": humanDate,
 }
 
 func Start() {
@@ -81,6 +91,11 @@ func Start() {
 		ErrorLog: errorLog,
 		Handler:  app.Routes(),
 	}
+
+	for key, val := range templateCache {
+		fmt.Println(key, ":", *val)
+	}
+
 	err = srv.ListenAndServe()
 	errorLog.Fatal(err.Error())
 }
