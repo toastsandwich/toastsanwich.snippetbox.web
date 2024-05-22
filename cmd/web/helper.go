@@ -1,6 +1,7 @@
 package web
 
 import (
+	"bytes"
 	"fmt"
 	"net/http"
 	"runtime/debug"
@@ -28,11 +29,15 @@ func (a *Application) Render(w http.ResponseWriter, status int, page string, dat
 		a.ServerError(w, err)
 		return
 	}
-	w.WriteHeader(status)
-	err := ts.ExecuteTemplate(w, "base", data)
+
+	buf := new(bytes.Buffer)
+	err := ts.ExecuteTemplate(buf, "base", data)
 	if err != nil {
 		a.ServerError(w, err)
+		return
 	}
+	w.WriteHeader(status)
+	buf.WriteTo(w)
 }
 
 func (a *Application) newTemplateData(r *http.Request) *templateData {
