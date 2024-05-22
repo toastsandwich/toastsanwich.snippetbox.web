@@ -22,7 +22,7 @@ func newTempateCache() (map[string]*template.Template, error) {
 	for _, page := range pages {
 		// var ts *template.Template
 		name := filepath.Base(page)
-		ts, err := template.ParseFiles("./ui/html/base.tmpl")
+		ts, err := template.New(name).Funcs(functions).ParseFiles("./ui/html/base.tmpl")
 		if err != nil {
 			return nil, err
 		}
