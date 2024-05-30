@@ -1,24 +1,28 @@
 package web
 
 import (
+	"crypto/tls"
 	"database/sql"
 	"flag"
-	"fmt"
 	"html/template"
 	"log"
 	"net/http"
 	"os"
 	"time"
 
+	"github.com/alexedwards/scs/mysqlstore"
+	"github.com/alexedwards/scs/v2"
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/toastsandwich/letsgo-api/internal/models"
 )
 
 type Application struct {
-	ErrorLog      *log.Logger
-	InfoLog       *log.Logger
-	SnippetModel  *models.SnippetModel
-	TemplateCache map[string]*template.Template
+	ErrorLog       *log.Logger
+	InfoLog        *log.Logger
+	UserModel      *models.UserModel
+	SnippetModel   *models.SnippetModel
+	TemplateCache  map[string]*template.Template
+	SessionManager *scs.SessionManager
 }
 
 func OpenDB(dsn string) (*sql.DB, error) {
@@ -30,16 +34,6 @@ func OpenDB(dsn string) (*sql.DB, error) {
 		return nil, err
 	}
 	return db, err
-}
-
-func (app *Application) Routes() *http.ServeMux {
-	mux := http.NewServeMux()
-	fileserver := http.FileServer(http.Dir("./ui/static/"))
-	mux.Handle("/static/", http.StripPrefix("/static", fileserver))
-	mux.HandleFunc("/", app.Home)
-	mux.HandleFunc("/snippet/create", app.SnippetCreate)
-	mux.HandleFunc("/snippet/view", app.SnippetView)
-	return mux
 }
 
 func humanDate(t time.Time) string {
@@ -75,27 +69,36 @@ func Start() {
 		errorLog.Fatal(err.Error())
 	}
 
+	sessionManager := scs.New()
+	sessionManager.Store = mysqlstore.New(db)
+	sessionManager.Lifetime = 12 * time.Hour
+
 	app := &Application{
-		ErrorLog:      errorLog,
-		InfoLog:       infoLog,
-		SnippetModel:  &models.SnippetModel{DB: db},
-		TemplateCache: templateCache,
+		ErrorLog:       errorLog,
+		InfoLog:        infoLog,
+		UserModel:      &models.UserModel{DB: db},
+		SnippetModel:   &models.SnippetModel{DB: db},
+		TemplateCache:  templateCache,
+		SessionManager: sessionManager,
 	}
 
 	addr := *host + ":" + *port
-	infoLog.Println("starting server at ", addr)
-	// errorLog.Fatal(http.ListenAndServe(addr, mux))
+	infoLog.Println("starting server at", addr)
+
+	tlsConfig := &tls.Config{
+		CurvePreferences: []tls.CurveID{tls.CurveP256, tls.X25519},
+	}
 
 	srv := &http.Server{
-		Addr:     addr,
-		ErrorLog: errorLog,
-		Handler:  app.Routes(),
+		Addr:         addr,
+		ErrorLog:     errorLog,
+		Handler:      app.Routes(),
+		TLSConfig:    tlsConfig,
+		IdleTimeout:  time.Minute,
+		ReadTimeout:  5 * time.Second,
+		WriteTimeout: 10 * time.Second,
 	}
 
-	for key, val := range templateCache {
-		fmt.Println(key, ":", *val)
-	}
-
-	err = srv.ListenAndServe()
+	err = srv.ListenAndServeTLS("./tls/cert.pem", "./tls/key.pem")
 	errorLog.Fatal(err.Error())
 }
